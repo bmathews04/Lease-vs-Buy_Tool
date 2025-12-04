@@ -1,4 +1,4 @@
-from app import (
+from calc import (
     monthly_loan_payment,
     remaining_loan_balance,
     lease_payment_from_mf,
