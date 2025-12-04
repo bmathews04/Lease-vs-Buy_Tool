@@ -11,13 +11,10 @@ def remaining_loan_balance(loan_amount: float, apr_percent: float, term_months: 
     months_elapsed = max(0, min(months_elapsed, term_months))
     if term_months <= 0 or loan_amount <= 0:
         return 0.0
-
     r = apr_percent / 100 / 12
     payment = monthly_loan_payment(loan_amount, apr_percent, term_months)
-
     if r == 0:
         return max(0.0, loan_amount - payment * months_elapsed)
-
     factor = (1 + r) ** months_elapsed
     balance = loan_amount * factor - payment * (factor - 1) / r
     return max(0.0, balance)
