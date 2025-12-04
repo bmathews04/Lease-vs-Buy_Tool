@@ -730,11 +730,122 @@ def main():
     else:
         st.info("Both options have roughly the same net cost with these inputs.")
 
+
+        # ---------- DEAL QUALITY SNAPSHOT ----------
+
+    st.markdown("## 🎯 Deal quality snapshot")
+
+    col_q_buy, col_q_lease = st.columns(2)
+
+    with col_q_buy:
+        st.subheader("Buying side")
+
+        if is_advanced and "msrp" in locals() and msrp and msrp > 0:
+            # Approximate discount vs MSRP if same vehicle
+            discount_pct_buy = 100 * (1 - (purchase_price / msrp))
+            st.write(f"Approx. discount vs MSRP: **{discount_pct_buy:,.1f}%**")
+
+            if discount_pct_buy >= 8:
+                st.success("This looks like a **strong** discount off MSRP.")
+            elif discount_pct_buy >= 4:
+                st.info("This looks like a **fair** discount. There may still be a little room.")
+            else:
+                st.warning(
+                    "This discount looks **small**. You could ask:\n"
+                    "- “Can you do better on the selling price if I sign today?”\n"
+                    "- “Another dealer is closer to invoice. Can you match it?”"
+                )
+        else:
+            st.info(
+                "In Simple mode, the app can’t see MSRP, so it can’t judge the discount. "
+                "Use the checklist above to ask for the **MSRP** and **final out-the-door price**, "
+                "then compare against a few dealers."
+            )
+
+    with col_q_lease:
+        st.subheader("Leasing side")
+
+        if is_advanced:
+            lease_apr_est = money_factor * 2400
+            st.write(f"Implied lease APR from money factor: **{lease_apr_est:,.2f}%**")
+
+            if lease_apr_est <= 3:
+                st.success(
+                    "This looks like a **strong** lease rate (assuming good credit)."
+                )
+            elif lease_apr_est <= 5:
+                st.info(
+                    "This looks like a **fair** lease rate. You can still ask if this is "
+                    "the **base buy rate** from the lender or if there’s dealer markup."
+                )
+            else:
+                st.warning(
+                    "This looks like a **high** effective rate. You could ask:\n"
+                    "- “Is this the base money factor, or is there dealer markup?”\n"
+                    "- “What would the payment be at the base money factor for my credit tier?”"
+                )
+
+            # Discount on lease side
+            if msrp and cap_cost and msrp > 0:
+                discount_pct_lease = 100 * (1 - (cap_cost / msrp))
+                st.write(f"Lease selling price vs MSRP: **{discount_pct_lease:,.1f}% off**")
+        else:
+            st.info(
+                "In Simple mode, we only see your **monthly payment** and **drive-off**. "
+                "Ask the dealer for **MSRP, selling price, residual %, and money factor (MF)** "
+                "to get a more detailed quality check."
+            )
+
+
     st.caption(
         "Net cost = all cash you send out (down payment, payments, fees, penalties) "
         "minus what you effectively own at the end (equity in the car if you buy)."
     )
 
+        # ---------- NEGOTIATION PRIORITIES ----------
+
+    st.markdown("## 🧠 What to negotiate first")
+
+    if diff < 0:
+        # Buying is currently cheaper
+        st.markdown(
+            "- Since **buying** looks cheaper in this scenario, focus on:\n"
+            "  1. **Selling price / out-the-door price** – ask for a better price quote or compare dealers.\n"
+            "  2. **Loan APR** – compare dealer financing with a bank/credit union pre-approval.\n"
+            "  3. **Dealer add-ons & fees** – remove optional protections you don’t really want.\n"
+        )
+        if is_advanced and "msrp" in locals() and msrp and msrp > 0:
+            st.caption(
+                "Tip: In your inputs, try lowering the purchase price by $500–$1,000 "
+                "and see how much the 3–5 year cost improves. That’s your target savings "
+                "to aim for in negotiation."
+            )
+    elif diff > 0:
+        # Leasing is currently cheaper
+        st.markdown(
+            "- Since **leasing** looks cheaper in this scenario, focus on:\n"
+            "  1. **Cap cost (selling price)** – negotiate the price of the car just like a purchase.\n"
+            "  2. **Money factor (MF)** – ask if you’re getting the **base rate**, or if there’s markup.\n"
+            "  3. **Drive-off & fees** – minimize cap cost reductions and junk add-ons.\n"
+            "  4. **Miles** – make sure the mileage allowance matches your driving so you don’t eat penalties.\n"
+        )
+        if is_advanced:
+            st.caption(
+                "Tip: Use the reverse-engineered MF and discount vs MSRP above to guide "
+                "your asks. If MF or discount look weak, that’s usually where the most "
+                "room is to improve the deal."
+            )
+    else:
+        # Roughly equal
+        st.markdown(
+            "- Since **both options are very close**, your decision might come down to:\n"
+            "  - How long you plan to keep the car.\n"
+            "  - How much you value always being in a newer car (lease) vs building equity (buy).\n"
+            "  - Your comfort with a higher or lower monthly payment.\n\n"
+            "You can still negotiate the same levers: price, rate, and fees."
+        )
+
+    
     # ---------- VISUALIZATIONS ----------
 
     st.markdown("## 📈 Net Cost Over Time (Month by Month)")
