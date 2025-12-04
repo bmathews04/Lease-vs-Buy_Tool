@@ -19,12 +19,15 @@ jobs:
       with:
         python-version: "3.10"
 
+    - name: Add project to PYTHONPATH
+      run: |
+        echo "PYTHONPATH=$(pwd)/Lease-vs-Buy_Tool" >> $GITHUB_ENV
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest  # Ensure pytest is always available
+        pip install pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip list
 
     - name: Run tests with pytest
       run: |
