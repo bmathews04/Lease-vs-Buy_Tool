@@ -363,6 +363,59 @@ def main():
             help="If you don’t know, $0.20–$0.30 is common. Default is a safe estimate.",
         )
 
+        # ---------- Dealer Checklist (Tabs) ----------
+
+    st.markdown("### 📝 What to ask your dealer")
+
+    st.caption(
+        "Use this checklist when you’re talking to the dealer. "
+        "Tick items off as you collect them."
+    )
+
+    tab_buy, tab_lease, tab_tips = st.tabs(
+        ["Buying quote checklist", "Lease quote checklist", "General tips"]
+    )
+
+    with tab_buy:
+        st.markdown("**Key items for a purchase quote:**")
+        st.checkbox("Final **out-the-door price** (including all fees & taxes)")
+        st.checkbox("Breakdown of **doc, title, registration, and other fees**")
+        st.checkbox("**Purchase price** of the car (before fees & tax)")
+        st.checkbox("**Rebates or incentives** applied")
+        st.checkbox("Loan **APR** and whether it’s promotional / conditional")
+        st.checkbox("Loan **term in months**")
+        st.checkbox("Any required **down payment**")
+        st.checkbox("Whether the loan has **prepayment penalties**")
+
+    with tab_lease:
+        st.markdown("**Key items for a lease quote:**")
+        st.checkbox("**MSRP** (sticker price)")
+        st.checkbox("**Cap cost / selling price** used for the lease")
+        st.checkbox("Any **cap cost reduction** (down payment, rebates applied)")
+        st.checkbox("Lease **term in months**")
+        st.checkbox("Monthly payment **before tax** and **with tax**")
+        st.checkbox("**Money factor (MF)** or equivalent APR")
+        st.checkbox("**Residual value %** (percentage of MSRP)")
+        st.checkbox("Total **drive-off / due at signing** amount")
+        st.checkbox("Annual **mileage allowance**")
+        st.checkbox("**Excess mileage charge** ($ per mile)")
+        st.checkbox("Lease **acquisition fee** (if any)")
+        st.checkbox("Lease **disposition / turn-in fee** at the end")
+
+    with tab_tips:
+        st.markdown("**General tips when talking to the dealer:**")
+        st.markdown(
+            "- Ask for everything in **writing** (PDF or email quote).\n"
+            "- Clarify whether numbers shown are **before or after tax**.\n"
+            "- Confirm whether the quote assumes any **trade-in** or **rebate**.\n"
+            "- If something isn’t clear (like money factor or residual), "
+            "ask: _“Can you please show the money factor and residual used "
+            "to calculate this payment?”_\n"
+            "- Don’t be afraid to say you’re using a **calculator** to compare "
+            "lease vs buy – it shows you’re informed, not difficult."
+        )
+
+    
     st.markdown("---")
     st.header("📊 Results & Comparison")
 
