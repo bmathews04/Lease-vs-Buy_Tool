@@ -335,6 +335,42 @@ def main():
     st.markdown("---")
     st.header("📊 Results & Comparison")
 
+    # ---------- VALIDATION UTILITIES ----------
+
+    def validate_positive(value, name):
+        if value < 0:
+            st.error(f"❌ {name} cannot be negative.")
+            st.stop()
+
+    def validate_percentage(value, name):
+        if value < 0 or value > 100:
+            st.error(f"❌ {name} must be between 0% and 100%.")
+            st.stop()
+
+    def validate_nonzero(value, name):
+        if value == 0:
+            st.error(f"❌ {name} cannot be zero.")
+            st.stop()
+
+    # Example validations for key inputs
+    validate_positive(purchase_price, "Purchase price")
+    validate_positive(down_payment_buy, "Down payment")
+    validate_positive(loan_apr, "Loan APR")
+    validate_nonzero(loan_term_months, "Loan term")
+    validate_percentage(expected_value_pct, "Expected value %")
+
+    if is_advanced:
+        validate_positive(msrp, "MSRP")
+        validate_positive(cap_cost, "Cap cost")
+        validate_percentage(residual_pct, "Residual %")
+        validate_positive(money_factor, "Money factor")
+
+    validate_positive(lease_term_months, "Lease term")
+    validate_positive(allowed_miles_per_year, "Mileage allowance")
+    validate_positive(lease_monthly_with_tax, "Lease payment")
+
+
+    
     # ---------- BUY CALCULATIONS ----------
 
     taxable_amount = purchase_price + buy_fees
