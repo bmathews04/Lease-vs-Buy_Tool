@@ -1,21 +1,48 @@
 import math
+from typing import List
+
+import pandas as pd
 import streamlit as st
+
 
 # ---------- Calculation Helpers ----------
 
 def monthly_loan_payment(loan_amount: float, apr_percent: float, term_months: int) -> float:
-    """Standard amortized loan payment."""
-    if term_months <= 0:
+    """Standard amortized loan payment (principal + interest)."""
+    if term_months <= 0 or loan_amount <= 0:
         return 0.0
-    r = apr_percent / 100 / 12  # monthly rate
+    r = apr_percent / 100 / 12  # monthly interest rate
     if r == 0:
         return loan_amount / term_months
     return loan_amount * (r * (1 + r) ** term_months) / ((1 + r) ** term_months - 1)
 
 
-def lease_payment_from_mf(cap_cost: float, residual_value: float, money_factor: float, term_months: int) -> float:
+def remaining_loan_balance(loan_amount: float, apr_percent: float,
+                           term_months: int, months_elapsed: int) -> float:
+    """Remaining balance on an amortized loan after `months_elapsed` payments."""
+    months_elapsed = max(0, min(months_elapsed, term_months))
+    if term_months <= 0 or loan_amount <= 0:
+        return 0.0
+
+    r = apr_percent / 100 / 12
+    payment = monthly_loan_payment(loan_amount, apr_percent, term_months)
+
+    if r == 0:
+        # Simple linear payoff if zero interest
+        balance = loan_amount - payment * months_elapsed
+        return max(0.0, balance)
+
+    # Standard amortization formula:
+    # B_k = P * (1+r)^k - PMT * ((1+r)^k - 1)/r
+    factor = (1 + r) ** months_elapsed
+    balance = loan_amount * factor - payment * (factor - 1) / r
+    return max(0.0, balance)
+
+
+def lease_payment_from_mf(cap_cost: float, residual_value: float,
+                          money_factor: float, term_months: int) -> float:
     """Typical lease formula: depreciation fee + finance fee."""
-    if term_months <= 0:
+    if term_months <= 0 or cap_cost <= 0:
         return 0.0
     depreciation_fee = (cap_cost - residual_value) / term_months
     finance_fee = (cap_cost + residual_value) * money_factor
@@ -27,6 +54,21 @@ def apr_to_money_factor(apr_percent: float) -> float:
     return apr_percent / 2400
 
 
+def linear_depreciation_value(initial_value: float,
+                              end_value: float,
+                              horizon_months: int,
+                              month: int) -> float:
+    """
+    Simple linear depreciation: value moves from initial_value at month 0
+    to end_value at month = horizon_months.
+    """
+    if horizon_months <= 0:
+        return end_value
+    month = max(0, month)
+    slope = (end_value - initial_value) / horizon_months
+    return initial_value + slope * min(month, horizon_months)
+
+
 # ---------- Streamlit App ----------
 
 def main():
@@ -34,17 +76,42 @@ def main():
     st.title("🚗 Lease vs Buy Decision Helper")
 
     st.markdown(
-        "Use this tool to compare **leasing vs buying** a car over a chosen time horizon. "
-        "This is an educational tool, not financial advice."
+        "This tool compares **leasing vs buying** a car over a chosen time horizon. "
+        "It focuses on **net cost**: total cash out minus what you still own (equity). "
+        "\n\nThis is an educational tool, not personalized financial advice."
     )
 
-    # Comparison horizon
-    st.sidebar.header("Comparison Settings")
+    # ----- Sidebar: Global Settings -----
+    st.sidebar.header("Mode & Horizon")
+
+    mode = st.sidebar.radio(
+        "Select mode",
+        ["Simple mode (recommended)", "Advanced mode"],
+        index=0,
+        help=(
+            "**Simple mode**: you enter your monthly lease payment and basic loan info.\n"
+            "**Advanced mode**: you control money factor, residual, cap cost, taxes, fees, etc."
+        )
+    )
+
     horizon_years = st.sidebar.slider("Comparison horizon (years)", 1, 7, 3)
     horizon_months = horizon_years * 12
 
+    tax_rate_global = st.sidebar.number_input(
+        "Sales tax rate (%)",
+        min_value=0.0,
+        value=6.25,
+        step=0.25,
+        format="%.2f",
+        help="Approx combined state + local tax rate in your area."
+    )
+
     st.sidebar.markdown("---")
-    st.sidebar.caption("Adjust buy/lease details in the main panel.")
+    st.sidebar.caption(
+        "Tip: For lease comparisons, a **3-year horizon** often matches a 36-month lease."
+    )
+
+    is_advanced = mode == "Advanced mode"
 
     col_buy, col_lease = st.columns(2)
 
@@ -52,29 +119,33 @@ def main():
     with col_buy:
         st.subheader("🔹 Buying Scenario")
 
-        purchase_price = st.number_input(
-            "Negotiated vehicle price ($)",
-            min_value=0.0,
-            value=35000.0,
-            step=500.0,
-            format="%.2f",
-        )
+        if is_advanced:
+            purchase_price = st.number_input(
+                "Negotiated vehicle price (before tax) ($)",
+                min_value=0.0,
+                value=35000.0,
+                step=500.0,
+                format="%.2f",
+            )
 
-        tax_rate = st.number_input(
-            "Sales tax rate (%)",
-            min_value=0.0,
-            value=6.25,
-            step=0.25,
-            format="%.2f",
-        )
-
-        buy_fees = st.number_input(
-            "Upfront fees (doc, title, etc.) ($)",
-            min_value=0.0,
-            value=500.0,
-            step=50.0,
-            format="%.2f",
-        )
+            buy_fees = st.number_input(
+                "Upfront fees (doc, title, etc.) ($)",
+                min_value=0.0,
+                value=500.0,
+                step=50.0,
+                format="%.2f",
+            )
+        else:
+            purchase_price = st.number_input(
+                "Vehicle price (before tax) ($)",
+                min_value=0.0,
+                value=35000.0,
+                step=500.0,
+                format="%.2f",
+                help="Rough price you’d pay for the car before tax."
+            )
+            # Keep it simple: bundle small fees into the price assumption
+            buy_fees = 0.0
 
         down_payment_buy = st.number_input(
             "Down payment ($)",
@@ -100,33 +171,60 @@ def main():
             step=12,
         )
 
-        expected_value_pct = st.slider(
-            f"Expected car value at end of {horizon_years} years (% of purchase price)",
-            min_value=10,
-            max_value=80,
-            value=55,
-            step=1,
-        )
+        if is_advanced:
+            expected_value_pct = st.slider(
+                f"Expected car value at end of {horizon_years} years (% of purchase price)",
+                min_value=10,
+                max_value=80,
+                value=55,
+                step=1,
+                help="Rough resale value as a percent of the original purchase price."
+            )
+        else:
+            # Simple defaults based on horizon, editable via slider
+            default_residual_by_horizon = {
+                1: 80,
+                2: 70,
+                3: 60,
+                4: 50,
+                5: 45,
+                6: 40,
+                7: 35,
+            }
+            default_pct = default_residual_by_horizon.get(horizon_years, 50)
+            expected_value_pct = st.slider(
+                f"Estimated value at end of {horizon_years} years (% of purchase price)",
+                min_value=10,
+                max_value=80,
+                value=default_pct,
+                step=1,
+                help="You can keep the default if you’re not sure."
+            )
 
     # ---------- LEASE INPUTS ----------
     with col_lease:
         st.subheader("🔹 Lease Scenario")
 
-        msrp = st.number_input(
-            "MSRP ($)",
-            min_value=0.0,
-            value=38000.0,
-            step=500.0,
-            format="%.2f",
-        )
+        if is_advanced:
+            msrp = st.number_input(
+                "MSRP ($)",
+                min_value=0.0,
+                value=38000.0,
+                step=500.0,
+                format="%.2f",
+            )
 
-        cap_cost = st.number_input(
-            "Negotiated cap cost / selling price for lease ($)",
-            min_value=0.0,
-            value=36000.0,
-            step=500.0,
-            format="%.2f",
-        )
+            cap_cost = st.number_input(
+                "Negotiated cap cost / selling price for lease ($)",
+                min_value=0.0,
+                value=36000.0,
+                step=500.0,
+                format="%.2f",
+            )
+        else:
+            # In simple mode, we don't need MSRP or cap cost for cost comparison
+            msrp = None
+            cap_cost = None
 
         lease_term_months = st.number_input(
             "Lease term (months)",
@@ -136,39 +234,77 @@ def main():
             step=6,
         )
 
-        residual_pct = st.slider(
-            "Residual value at end of lease (% of MSRP)",
-            min_value=30,
-            max_value=75,
-            value=58,
-            step=1,
-        )
+        if is_advanced:
+            residual_pct = st.slider(
+                "Residual value at end of lease (% of MSRP)",
+                min_value=30,
+                max_value=80,
+                value=58,
+                step=1,
+            )
 
-        use_apr = st.checkbox("Use lease APR instead of money factor?", value=True)
+            use_apr = st.checkbox("Use lease APR instead of money factor?", value=True)
 
-        if use_apr:
-            lease_apr = st.number_input(
-                "Lease APR (%)",
+            if use_apr:
+                lease_apr = st.number_input(
+                    "Lease APR (%)",
+                    min_value=0.0,
+                    value=3.0,
+                    step=0.25,
+                    format="%.2f",
+                )
+                money_factor = apr_to_money_factor(lease_apr)
+            else:
+                money_factor = st.number_input(
+                    "Money factor",
+                    min_value=0.0001,
+                    value=0.00125,
+                    step=0.00005,
+                    format="%.5f",
+                )
+
+            lease_tax_rate = st.number_input(
+                "Tax on lease payments (%)",
                 min_value=0.0,
-                value=3.0,
+                value=tax_rate_global,
                 step=0.25,
                 format="%.2f",
-            )
-            money_factor = apr_to_money_factor(lease_apr)
-        else:
-            money_factor = st.number_input(
-                "Money factor",
-                min_value=0.0001,
-                value=0.00125,
-                step=0.00005,
-                format="%.5f",
+                help="In many states, sales tax is charged on each lease payment."
             )
 
-        drive_off = st.number_input(
-            "Drive-off amount (cash due at signing) ($)",
+            drive_off = st.number_input(
+                "Drive-off amount (cash due at signing) ($)",
+                min_value=0.0,
+                value=2000.0,
+                step=250.0,
+                format="%.2f",
+            )
+        else:
+            # SIMPLE MODE: user enters final monthly payment with tax directly
+            lease_monthly_with_tax = st.number_input(
+                "Monthly lease payment (including tax) ($)",
+                min_value=0.0,
+                value=450.0,
+                step=25.0,
+                format="%.2f",
+                help="Use the payment shown in your lease quote."
+            )
+            lease_tax_rate = 0.0  # already baked into the payment
+            drive_off = st.number_input(
+                "Drive-off / due at signing ($)",
+                min_value=0.0,
+                value=2000.0,
+                step=250.0,
+                format="%.2f",
+            )
+            residual_pct = None
+            money_factor = None
+
+        disposition_fee = st.number_input(
+            "Disposition / turn-in fee at lease end ($)",
             min_value=0.0,
-            value=2000.0,
-            step=250.0,
+            value=395.0,
+            step=25.0,
             format="%.2f",
         )
 
@@ -196,74 +332,111 @@ def main():
             format="%.2f",
         )
 
-    # ---------- Perform Calculations ----------
     st.markdown("---")
     st.header("📊 Results & Comparison")
 
-    # --- Buy calculations ---
-    total_purchase_before_tax = purchase_price + buy_fees
-    total_tax = total_purchase_before_tax * (tax_rate / 100)
-    total_purchase_cost = total_purchase_before_tax + total_tax
+    # ---------- BUY CALCULATIONS ----------
 
-    loan_amount = max(total_purchase_cost - down_payment_buy, 0)
+    taxable_amount = purchase_price + buy_fees
+    total_tax = taxable_amount * (tax_rate_global / 100)
+    total_purchase_cost = taxable_amount + total_tax
+
+    loan_amount = max(total_purchase_cost - down_payment_buy, 0.0)
     buy_monthly_payment = monthly_loan_payment(loan_amount, loan_apr, loan_term_months)
 
-    # How many months of payments within horizon?
-    months_of_payments = min(horizon_months, loan_term_months)
-    total_loan_payments_in_horizon = buy_monthly_payment * months_of_payments
+    # Expected value at end of horizon
+    end_value_at_horizon = purchase_price * (expected_value_pct / 100)
 
-    # Estimate value of car at end of horizon
-    estimated_value_end = purchase_price * (expected_value_pct / 100)
+    # ---------- LEASE CALCULATIONS ----------
 
-    # Net cash outlay for buy (assuming you could sell the car at end of horizon)
-    total_out_of_pocket_buy = down_payment_buy + total_loan_payments_in_horizon
-    net_cost_buy = total_out_of_pocket_buy - estimated_value_end
+    if is_advanced:
+        residual_value = msrp * (residual_pct / 100)
+        base_lease_monthly = lease_payment_from_mf(cap_cost, residual_value, money_factor, lease_term_months)
+        lease_monthly_with_tax = base_lease_monthly * (1 + lease_tax_rate / 100)
+    # else: lease_monthly_with_tax already provided by user in simple mode
 
-    # --- Lease calculations ---
-    residual_value = msrp * (residual_pct / 100)
-    lease_monthly_payment = lease_payment_from_mf(cap_cost, residual_value, money_factor, lease_term_months)
-
-    # For now, assume comparison horizon is the lease term (or truncate if shorter)
-    months_in_lease = min(horizon_months, lease_term_months)
-    total_lease_payments_in_horizon = lease_monthly_payment * months_in_lease
-
-    # Mileage penalties (only if horizon = full lease term and you drive more than allowance)
-    total_allowed_miles = (allowed_miles_per_year * lease_term_months) / 12
-    total_expected_miles = (expected_miles_per_year * lease_term_months) / 12
-    excess_miles = max(0, total_expected_miles - total_allowed_miles)
+    lease_years = lease_term_months / 12
+    total_allowed_miles = allowed_miles_per_year * lease_years
+    total_expected_miles = expected_miles_per_year * lease_years
+    excess_miles = max(0.0, total_expected_miles - total_allowed_miles)
     mileage_penalty = excess_miles * excess_mileage_fee
 
-    total_out_of_pocket_lease = drive_off + total_lease_payments_in_horizon + mileage_penalty
-    net_cost_lease = total_out_of_pocket_lease  # no asset at end
+    total_lease_payments_term = lease_monthly_with_tax * lease_term_months
+    net_cost_lease_full_term = drive_off + total_lease_payments_term + mileage_penalty + disposition_fee
 
-    # ---------- Display Results ----------
+    # ---------- COST OVER TIME (FOR PLOTS) ----------
+
+    months = list(range(1, horizon_months + 1))
+    buy_net_cost_by_month: List[float] = []
+    lease_net_cost_by_month: List[float] = []
+
+    for m in months:
+        # Buying: net cost = down + payments made + remaining balance − estimated car value
+        payments_made = buy_monthly_payment * min(m, loan_term_months)
+        remaining_bal = remaining_loan_balance(loan_amount, loan_apr, loan_term_months, m)
+        value_m = linear_depreciation_value(purchase_price, end_value_at_horizon, horizon_months, m)
+        net_cost_buy_m = down_payment_buy + payments_made + remaining_bal - value_m
+        buy_net_cost_by_month.append(net_cost_buy_m)
+
+        # Leasing: cumulative cash out
+        if m <= lease_term_months:
+            lease_cost_m = drive_off + lease_monthly_with_tax * m
+            if m == lease_term_months:
+                lease_cost_m += mileage_penalty + disposition_fee
+        else:
+            # After lease ends, cost is flat at full lease net cost
+            lease_cost_m = net_cost_lease_full_term
+
+        lease_net_cost_by_month.append(lease_cost_m)
+
+    # Net cost at chosen horizon (last month)
+    net_cost_buy = buy_net_cost_by_month[-1]
+    net_cost_lease_at_horizon = lease_net_cost_by_month[-1]
+
+    # ---------- DISPLAY SUMMARY METRICS ----------
+
     col_res_buy, col_res_lease = st.columns(2)
 
     with col_res_buy:
         st.subheader("Buying Summary")
         st.metric("Monthly payment", f"${buy_monthly_payment:,.0f}")
-        st.write(f"**Total paid in {horizon_years} years** (down + loan payments): "
-                 f"${total_out_of_pocket_buy:,.0f}")
+        st.write(f"Total purchase cost (price + fees + tax): "
+                 f"**${total_purchase_cost:,.0f}**")
+        st.write(f"Loan amount financed: **${loan_amount:,.0f}**")
         st.write(f"Estimated car value at end of {horizon_years} years: "
-                 f"${estimated_value_end:,.0f}")
-        st.write(f"**Net cost over {horizon_years} years**: "
-                 f"`${net_cost_buy:,.0f}`")
+                 f"**${end_value_at_horizon:,.0f}**")
+        st.write(
+            f"**Net cost over {horizon_years} years** "
+            f"(cash out − equity): `~${net_cost_buy:,.0f}`"
+        )
 
     with col_res_lease:
         st.subheader("Leasing Summary")
-        st.metric("Monthly payment", f"${lease_monthly_payment:,.0f}")
-        st.write(f"Drive-off (due at signing): ${drive_off:,.0f}")
-        st.write(f"Lease payments over {months_in_lease} months: "
-                 f"${total_lease_payments_in_horizon:,.0f}")
+        st.metric("Monthly payment"
+                  f"{' (with tax)' if is_advanced else ''}",
+                  f"${lease_monthly_with_tax:,.0f}")
+        st.write(f"Drive-off (due at signing): **${drive_off:,.0f}**")
+        st.write(
+            f"Lease payments over {lease_term_months} months"
+            f"{' (with tax)' if is_advanced else ''}: "
+            f"**${total_lease_payments_term:,.0f}**"
+        )
         if mileage_penalty > 0:
-            st.write(f"Estimated mileage penalties: ${mileage_penalty:,.0f}")
-        st.write(f"**Net cost over {horizon_years} years**: "
-                 f"`${net_cost_lease:,.0f}`")
+            st.write(f"Estimated mileage penalties at lease end: "
+                     f"**${mileage_penalty:,.0f}**")
+        st.write(f"Disposition / turn-in fee at lease end: **${disposition_fee:,.0f}**")
+        st.write(f"**Total net cost for one full lease**: "
+                 f"`~${net_cost_lease_full_term:,.0f}`")
+        st.write(
+            f"**Net cost at {horizon_years} years** "
+            f"(same lease assumptions): `~${net_cost_lease_at_horizon:,.0f}`"
+        )
 
     st.markdown("---")
 
-    # ---------- Recommendation ----------
-    diff = net_cost_buy - net_cost_lease
+    # ---------- RECOMMENDATION ----------
+
+    diff = net_cost_buy - net_cost_lease_at_horizon
 
     if diff > 0:
         st.success(
@@ -279,7 +452,38 @@ def main():
         st.info("Both options have roughly the same net cost with these inputs.")
 
     st.caption(
-        "These results are estimates only. Real-world offers, taxes, maintenance, and fees may vary."
+        "Net cost = all cash you send out (down payment, payments, fees, penalties) "
+        "minus what you effectively own at the end (equity in the car if you buy)."
+    )
+
+    # ---------- VISUALIZATIONS ----------
+
+    st.markdown("## 📈 Net Cost Over Time (Month by Month)")
+
+    df_time = pd.DataFrame(
+        {
+            "Month": months,
+            "Buy (net cost)": buy_net_cost_by_month,
+            "Lease (net cost)": lease_net_cost_by_month,
+        }
+    ).set_index("Month")
+
+    st.line_chart(df_time)
+
+    st.markdown("## 📊 Total Net Cost at Your Selected Horizon")
+
+    df_bar = pd.DataFrame(
+        {
+            "Option": ["Buy", "Lease"],
+            "Net cost": [net_cost_buy, net_cost_lease_at_horizon],
+        }
+    ).set_index("Option")
+
+    st.bar_chart(df_bar)
+
+    st.caption(
+        "The line chart shows how your position changes over time.\n"
+        "The bar chart shows the final comparison at the horizon you chose."
     )
 
 
