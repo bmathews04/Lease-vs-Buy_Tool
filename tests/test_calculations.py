@@ -32,3 +32,8 @@ def test_lease_payment_formula():
     payment = lease_payment_from_mf(cap_cost, residual, mf, 36)
     # depreciation = 12000/36 = 333.33; finance fee = (30000+18000)*0.001 = 48
     assert round(payment, 2) == round(333.33 + 48, 2)
+
+- name: Upload coverage reports to Codecov
+    uses: codecov/codecov-action@v5
+    with:
+      token: ${{ secrets.CODECOV_TOKEN }}
