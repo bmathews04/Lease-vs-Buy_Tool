@@ -67,6 +67,105 @@ def get_confidence_label(mode: str, using_estimates: bool) -> str:
     )
 
 
+# ---------- Loan amortization helper ----------
+
+def build_amortization_schedule(loan_amount: float,
+                                apr_percent: float,
+                                term_months: int,
+                                monthly_payment: float) -> pd.DataFrame:
+    """Return a DataFrame with amortization details by month."""
+    rows = []
+    balance = loan_amount
+    r = apr_percent / 100 / 12 if term_months > 0 else 0.0
+
+    for m in range(1, term_months + 1):
+        if r > 0:
+            interest = balance * r
+        else:
+            interest = 0.0
+        principal = monthly_payment - interest
+        if principal < 0:
+            principal = 0.0
+        new_balance = max(0.0, balance - principal)
+        rows.append(
+            {
+                "Month": m,
+                "Payment": monthly_payment,
+                "Principal": principal,
+                "Interest": interest,
+                "Remaining balance": new_balance,
+            }
+        )
+        balance = new_balance
+
+    return pd.DataFrame(rows)
+
+
+# ---------- Lease cashflow helper ----------
+
+def build_lease_cashflows(lease_term_months: int,
+                          drive_off: float,
+                          lease_monthly_with_tax: float,
+                          mileage_penalty: float,
+                          disposition_fee: float) -> pd.DataFrame:
+    """Return a DataFrame with lease cashflows over time."""
+    rows = []
+    cumulative = 0.0
+
+    # Month 0 – drive-off
+    cumulative += drive_off
+    rows.append(
+        {
+            "Step": "Start",
+            "Month": 0,
+            "Type": "Drive-off",
+            "Cash flow": drive_off,
+            "Cumulative": cumulative,
+        }
+    )
+
+    # Monthly payments
+    for m in range(1, lease_term_months + 1):
+        cf = lease_monthly_with_tax
+        cumulative += cf
+        rows.append(
+            {
+                "Step": f"Month {m}",
+                "Month": m,
+                "Type": "Monthly payment",
+                "Cash flow": cf,
+                "Cumulative": cumulative,
+            }
+        )
+
+    # End-of-lease charges
+    if mileage_penalty > 0:
+        cumulative += mileage_penalty
+        rows.append(
+            {
+                "Step": "End of lease – mileage penalty",
+                "Month": lease_term_months,
+                "Type": "Mileage penalty",
+                "Cash flow": mileage_penalty,
+                "Cumulative": cumulative,
+            }
+        )
+
+    if disposition_fee > 0:
+        cumulative += disposition_fee
+        rows.append(
+            {
+                "Step": "End of lease – disposition fee",
+                "Month": lease_term_months,
+                "Type": "Disposition fee",
+                "Cash flow": disposition_fee,
+                "Cumulative": cumulative,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
 # ---------- Streamlit App ----------
 
 def main():
@@ -252,32 +351,6 @@ def main():
                 ),
             )
 
-            use_estimated_mf = st.checkbox(
-                "Dealer didn't share money factor? Use a typical value",
-                value=True,
-            )
-
-            if use_estimated_mf:
-                # Typical MF ≈ 0.00125 (~3% APR)
-                money_factor = 0.00125
-                st.info(
-                    "Using typical money factor **0.00125** "
-                    "(≈ 3.0% APR). Adjust in advanced scenarios."
-                )
-                using_estimates = True
-            else:
-                money_factor = st.number_input(
-                    "Money factor",
-                    min_value=0.0001,
-                    value=0.00125,
-                    step=0.00005,
-                    format="%.5f",
-                    help=(
-                        "Lease equivalent of an interest rate. "
-                        "You may see it as a small decimal like 0.00125."
-                    ),
-                )
-
             lease_tax_rate = st.number_input(
                 "Tax on lease payments (%)",
                 min_value=0.0,
@@ -296,8 +369,85 @@ def main():
                 help="Everything you pay upfront: first month, fees, etc.",
             )
 
-            # Monthly payment will be computed from MF, residual, etc.
-            lease_monthly_with_tax = None  # computed later
+            # --- Money factor selection / estimation ---
+            use_estimated_mf = st.checkbox(
+                "Dealer didn't share money factor? Use a typical value",
+                value=True,
+            )
+
+            if use_estimated_mf:
+                # Typical MF ≈ 0.00125 (~3% APR)
+                money_factor = 0.00125
+                st.info(
+                    "Using typical money factor **0.00125** "
+                    "(≈ 3.0% APR). Adjust in advanced scenarios or use the "
+                    "reverse-engineer tool below."
+                )
+                using_estimates = True
+            else:
+                money_factor = st.number_input(
+                    "Money factor",
+                    min_value=0.0001,
+                    value=0.00125,
+                    step=0.00005,
+                    format="%.5f",
+                    help=(
+                        "Lease equivalent of an interest rate. "
+                        "You may see it as a small decimal like 0.00125."
+                    ),
+                )
+
+            # --- Reverse-engineer MF from a quoted payment (optional) ---
+            with st.expander("🔍 Reverse-engineer money factor from a quoted payment"):
+                st.caption(
+                    "If your dealer gave you a monthly payment but not the money factor, "
+                    "you can estimate the implied MF here."
+                )
+                known_payment_with_tax = st.number_input(
+                    "Quoted monthly payment from dealer (with tax) ($)",
+                    min_value=0.0,
+                    value=0.0,
+                    step=10.0,
+                    format="%.2f",
+                )
+
+                if known_payment_with_tax > 0 and msrp > 0 and cap_cost > 0:
+                    # Convert to pre-tax payment (if tax is nonzero)
+                    if lease_tax_rate > 0:
+                        payment_pre_tax = known_payment_with_tax / (
+                            1 + lease_tax_rate / 100
+                        )
+                    else:
+                        payment_pre_tax = known_payment_with_tax
+
+                    residual_value = msrp * (residual_pct / 100)
+                    denom = cap_cost + residual_value
+                    dep_fee = (cap_cost - residual_value) / lease_term_months
+
+                    if denom > 0:
+                        mf_implied = (payment_pre_tax - dep_fee) / denom
+                        if mf_implied > 0:
+                            money_factor = mf_implied
+                            using_estimates = True
+                            implied_apr = mf_implied * 2400
+                            st.success(
+                                f"Estimated money factor from this payment: "
+                                f"**{mf_implied:.5f}** "
+                                f"(≈ **{implied_apr:.2f}% APR**). "
+                                "This value will be used in the comparison below."
+                            )
+                        else:
+                            st.warning(
+                                "The inputs result in a non-positive money factor. "
+                                "Double-check the payment, term, and cap cost values."
+                            )
+                    else:
+                        st.warning(
+                            "Cap cost + residual is zero, so the implied money factor "
+                            "cannot be calculated. Check MSRP / cap cost."
+                        )
+
+            lease_monthly_with_tax = None  # computed below
 
         else:
             # SIMPLE MODE: only ask for what users actually see on the quote
@@ -322,7 +472,7 @@ def main():
                 format="%.2f",
             )
 
-            lease_tax_rate = 0.0  # already baked into payment
+            lease_tax_rate = 0.0  # already baked into the payment
             residual_pct = None
             money_factor = None
             msrp = None
@@ -363,7 +513,7 @@ def main():
             help="If you don’t know, $0.20–$0.30 is common. Default is a safe estimate.",
         )
 
-        # ---------- Dealer Checklist (Tabs) ----------
+    # ---------- Dealer Checklist (Tabs) ----------
 
     st.markdown("### 📝 What to ask your dealer")
 
@@ -415,7 +565,6 @@ def main():
             "lease vs buy – it shows you’re informed, not difficult."
         )
 
-    
     st.markdown("---")
     st.header("📊 Results & Comparison")
 
@@ -611,9 +760,45 @@ def main():
 
     st.bar_chart(df_bar)
 
+    # ---------- Detailed Breakdowns ----------
+
+    st.markdown("## 🧾 Detailed Breakdowns")
+
+    tab_amort, tab_lease_cf = st.tabs(
+        ["Loan amortization (buy)", "Lease cashflow (lease)"]
+    )
+
+    with tab_amort:
+        st.markdown("**Loan amortization schedule**")
+        if loan_amount > 0 and loan_term_months > 0 and buy_monthly_payment > 0:
+            df_amort = build_amortization_schedule(
+                loan_amount, loan_apr, loan_term_months, buy_monthly_payment
+            )
+            st.dataframe(df_amort, use_container_width=True)
+            st.markdown("**Remaining balance over time**")
+            st.line_chart(
+                df_amort.set_index("Month")[["Remaining balance"]]
+            )
+        else:
+            st.info("Enter a positive loan amount, APR, and term to see the schedule.")
+
+    with tab_lease_cf:
+        st.markdown("**Lease cashflow breakdown**")
+        if lease_term_months > 0 and lease_monthly_with_tax > 0:
+            df_cf = build_lease_cashflows(
+                lease_term_months,
+                drive_off,
+                lease_monthly_with_tax,
+                mileage_penalty,
+                disposition_fee,
+            )
+            st.dataframe(df_cf, use_container_width=True)
+        else:
+            st.info("Enter lease details to see the cashflow breakdown.")
+
     st.caption(
-        "The line chart shows how your position changes over time.\n"
-        "The bar chart shows the final comparison at the horizon you chose."
+        "The amortization table shows how your loan balance shrinks over time, "
+        "while the lease cashflow table shows where every dollar goes in a lease."
     )
 
 
