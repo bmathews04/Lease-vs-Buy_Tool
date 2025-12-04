@@ -19,9 +19,9 @@ jobs:
       with:
         python-version: "3.10"
 
-    - name: Add project to PYTHONPATH
+    - name: Add project root to PYTHONPATH
       run: |
-        echo "PYTHONPATH=$(pwd)/Lease-vs-Buy_Tool" >> $GITHUB_ENV
+        echo "PYTHONPATH=$(pwd)" >> $GITHUB_ENV
 
     - name: Install dependencies
       run: |
