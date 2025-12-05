@@ -949,7 +949,7 @@ def main():
                 )
                 st.dataframe(df_amort, use_container_width=True)
                 st.markdown("**Remaining Balance Over Time**")
-                st.line_chart(df_amort.set_index("Month")[["Remaining Balance"]])
+                st.line_chart(df_amort.set_index("Month")[["Remaining balance"]])
             else:
                 st.info(
                     "Enter a positive loan amount, APR, and term to see the schedule."
