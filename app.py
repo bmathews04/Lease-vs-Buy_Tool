@@ -186,11 +186,11 @@ def main():
     )
 
     # ----- Sidebar: Global Settings -----
-    st.sidebar.header("Mode & Horizon")
+    st.sidebar.header("Mode")
 
     mode = st.sidebar.radio(
         "Select Mode",
-        ["Simple Mode (recommended)", "Advanced Mode"],
+        ["Simple Mode", "Advanced Mode"],
         index=0,
         help=(
             "**Simple Mode**: just use your monthly lease payment and basic loan info.\n"
@@ -202,7 +202,7 @@ def main():
     horizon_months = horizon_years * 12
 
     tax_rate_global = st.sidebar.number_input(
-        "Sales Tax Rate on Vehicle Purchase (%)",
+        "Sales Tax on Vehicle Purchase (%)",
         min_value=0.0,
         value=6.25,
         step=0.25,
@@ -311,7 +311,7 @@ def main():
         using_estimates = False
 
         if is_advanced:
-            st.markdown("**Advanced lease structure**")
+            st.markdown("**Advanced Lease Structure**")
 
             msrp = st.number_input(
                 "MSRP ($)",
@@ -324,7 +324,7 @@ def main():
 
             # Cap cost: either user-entered or estimated from MSRP
             estimate_cap_cost = st.checkbox(
-                "Dealer didn't give cap cost? Estimate ~7% discount off MSRP",
+                "Dealer Didn't Give Cap Cost? Estimate ~7% discount off MSRP",
                 value=True,
             )
 
@@ -379,7 +379,7 @@ def main():
 
             # --- Money factor selection / estimation ---
             use_estimated_mf = st.checkbox(
-                "Dealer didn't share money factor? Use a typical value",
+                "Dealer Didn't Share Money Factor? Use a typical value",
                 value=True,
             )
 
@@ -406,7 +406,7 @@ def main():
                 )
 
             # --- Reverse-engineer MF from a quoted payment (optional) ---
-            with st.expander("🔍 Reverse-engineer money factor from a quoted payment"):
+            with st.expander("🔍 Reverse-Engineer Money Factor from a Quoted Payment"):
                 st.caption(
                     "If your dealer gave you a monthly payment but not the money factor, "
                     "you can estimate the implied MF here."
