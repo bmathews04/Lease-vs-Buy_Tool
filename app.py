@@ -175,8 +175,8 @@ def build_lease_cashflows(
 
 
 def main():
-    st.set_page_config(page_title="Lease vs Buy Calculator", layout="wide")
-    st.title("Lease vs Buy Decision Helper")
+    st.set_page_config(page_title="Lease vs Buy Helper", layout="wide")
+    st.title("Lease vs Buy Helper")
 
     st.markdown(
         "This tool compares **leasing vs buying** a car over a chosen time horizon.\n\n"
